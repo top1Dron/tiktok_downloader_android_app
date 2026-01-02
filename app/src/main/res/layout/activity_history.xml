@@ -48,9 +48,9 @@
                 android:id="@+id/historyRecyclerView"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:padding="16dp"
+        android:padding="16dp"
                 android:nestedScrollingEnabled="false"
-                tools:listitem="@layout/item_history" />
+        tools:listitem="@layout/item_history" />
 
         </LinearLayout>
 

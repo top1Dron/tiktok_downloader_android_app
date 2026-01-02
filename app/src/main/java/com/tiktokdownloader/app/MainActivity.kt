@@ -240,11 +240,11 @@ class MainActivity : AppCompatActivity() {
                             Toast.LENGTH_LONG
                         ).show()
                     } else {
-                        Toast.makeText(
-                            this@MainActivity,
+                    Toast.makeText(
+                        this@MainActivity,
                             "Failed to save file: ${result.error}",
-                            Toast.LENGTH_LONG
-                        ).show()
+                        Toast.LENGTH_LONG
+                    ).show()
                         Log.e("MainActivity", "Save failed: ${result.error}")
                     }
                 } else {
