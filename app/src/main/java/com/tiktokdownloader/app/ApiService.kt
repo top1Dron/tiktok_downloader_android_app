@@ -22,20 +22,8 @@ data class DownloadRequest(val url: String)
 data class DownloadResponse(
     val success: Boolean,
     val message: String,
-    val task_id: String?,
-    val file_path: String?,
-    val file_name: String?
-)
-
-data class DownloadStatus(
-    val task_id: String,
-    val status: String,
-    val url: String,
-    val file_path: String?,
     val file_name: String?,
-    val error: String?,
-    val created_at: String,
-    val completed_at: String?
+    val file_path: String?
 )
 
 interface ApiService {
@@ -44,12 +32,6 @@ interface ApiService {
         @Body request: DownloadRequest,
         @Header("X-API-Key") apiKey: String = AppConfig.API_KEY
     ): DownloadResponse
-    
-    @GET("download/status/{task_id}")
-    suspend fun getDownloadStatus(
-        @Path("task_id") taskId: String,
-        @Header("X-API-Key") apiKey: String = AppConfig.API_KEY
-    ): DownloadStatus
     
     @GET("download/file/{file_name}")
     suspend fun getVideoFile(

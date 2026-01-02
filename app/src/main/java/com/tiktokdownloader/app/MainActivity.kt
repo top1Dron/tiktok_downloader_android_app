@@ -154,27 +154,30 @@ class MainActivity : AppCompatActivity() {
     private fun downloadVideo(url: String) {
         binding.downloadButton.isEnabled = false
         binding.progressBar.visibility = android.view.View.VISIBLE
-        binding.statusText.text = "Starting download..."
+        binding.statusText.text = "Downloading video..."
         
         lifecycleScope.launch {
             try {
+                // Download video synchronously - wait for completion
                 val response = apiService.downloadVideo(DownloadRequest(url))
                 
-                if (response.success && response.task_id != null) {
-                    binding.statusText.text = "Download started"
+                if (response.success && response.file_name != null) {
+                    binding.statusText.text = "Download completed!"
                     
                     // Save to database
                     val history = DownloadHistory(
-                        taskId = response.task_id,
+                        taskId = response.file_name, // Use filename as ID since no task_id
                         url = url,
-                        fileName = null,
-                        filePath = null,
-                        status = "pending"
+                        fileName = response.file_name,
+                        filePath = response.file_path,
+                        status = "completed",
+                        completedAt = System.currentTimeMillis()
                     )
                     database.downloadHistoryDao().insert(history)
                     
-                    // Poll for status updates
-                    pollDownloadStatus(response.task_id, url)
+                    // Download the file directly
+                    downloadVideoFile(response.file_name)
+                    loadRecentDownloads()
                 } else {
                     binding.statusText.text = "Download failed: ${response.message}"
                     Toast.makeText(
@@ -193,72 +196,6 @@ class MainActivity : AppCompatActivity() {
             } finally {
                 binding.downloadButton.isEnabled = true
                 binding.progressBar.visibility = android.view.View.GONE
-            }
-        }
-    }
-    
-    private fun pollDownloadStatus(taskId: String, url: String) {
-        lifecycleScope.launch {
-            var attempts = 0
-            val maxAttempts = 60 // Poll for up to 5 minutes (60 * 5 seconds)
-            
-            while (attempts < maxAttempts) {
-                try {
-                    kotlinx.coroutines.delay(5000) // Wait 5 seconds
-                    val status = apiService.getDownloadStatus(taskId)
-                    
-                    // Update database
-                    val history = database.downloadHistoryDao().getByTaskId(taskId)
-                    val completedAt = if (status.completed_at != null) {
-                        try {
-                            SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault())
-                                .parse(status.completed_at)?.time
-                        } catch (e: Exception) {
-                            System.currentTimeMillis()
-                        }
-                    } else null
-                    
-                    if (history != null) {
-                        val updated = history.copy(
-                            status = status.status,
-                            fileName = status.file_name,
-                            filePath = status.file_path,
-                            error = status.error,
-                            completedAt = completedAt
-                        )
-                        database.downloadHistoryDao().update(updated)
-                    } else {
-                        // Create new entry
-                        val newHistory = DownloadHistory(
-                            taskId = taskId,
-                            url = url,
-                            fileName = status.file_name,
-                            filePath = status.file_path,
-                            status = status.status,
-                            error = status.error,
-                            completedAt = completedAt
-                        )
-                        database.downloadHistoryDao().insert(newHistory)
-                    }
-                    
-                    // Update UI
-                    binding.statusText.text = "Status: ${status.status}"
-                    
-                    if (status.status == "completed") {
-                        binding.statusText.text = "Download completed!"
-                        downloadVideoFile(status.file_name ?: "")
-                        loadRecentDownloads()
-                        break
-                    } else if (status.status == "failed") {
-                        binding.statusText.text = "Download failed: ${status.error}"
-                        break
-                    }
-                    
-                    attempts++
-                } catch (e: Exception) {
-                    binding.statusText.text = "Error checking status: ${e.message}"
-                    attempts++
-                }
             }
         }
     }

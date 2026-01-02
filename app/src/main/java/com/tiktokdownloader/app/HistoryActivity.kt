@@ -119,16 +119,20 @@ class HistoryActivity : AppCompatActivity() {
             lifecycleScope.launch {
                 try {
                     val response = apiService.downloadVideo(DownloadRequest(history.url))
-                    if (response.success && response.task_id != null) {
-                        Toast.makeText(this@HistoryActivity, "Download restarted", Toast.LENGTH_SHORT).show()
+                    if (response.success && response.file_name != null) {
+                        Toast.makeText(this@HistoryActivity, "Download completed", Toast.LENGTH_SHORT).show()
                         // Update database
                         val updated = history.copy(
-                            taskId = response.task_id,
-                            status = "pending",
-                            completedAt = null,
+                            taskId = response.file_name,
+                            fileName = response.file_name,
+                            filePath = response.file_path,
+                            status = "completed",
+                            completedAt = System.currentTimeMillis(),
                             error = null
                         )
                         database.downloadHistoryDao().update(updated)
+                        // Download the file
+                        downloadVideoFile(response.file_name)
                     }
                 } catch (e: Exception) {
                     Toast.makeText(this@HistoryActivity, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
