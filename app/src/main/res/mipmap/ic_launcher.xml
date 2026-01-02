@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Fallback icon for API 24-25 (adaptive icons require API 26+) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Background circle -->
+    <path
+        android:fillColor="#FF6200EE"
+        android:pathData="M54,0C24.2,0 0,24.2 0,54C0,83.8 24.2,108 54,108C83.8,108 108,83.8 108,54C108,24.2 83.8,0 54,0Z"/>
+    <!-- Play icon -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,27C40.2,27 29,38.2 29,52C29,65.8 40.2,77 54,77C67.8,77 79,65.8 79,52C79,38.2 67.8,27 54,27ZM54,71C43.5,71 35,62.5 35,52C35,41.5 43.5,33 54,33C64.5,33 73,41.5 73,52C73,62.5 64.5,71 54,71Z"/>
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M45,45L45,59L63,52L45,45Z"/>
+</vector>
+
