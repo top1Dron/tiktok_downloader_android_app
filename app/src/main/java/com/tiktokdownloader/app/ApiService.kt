@@ -25,8 +25,18 @@ data class DownloadResponse(
     val file_name: String?,
     val file_path: String?
 )
+data class HealthResponse(
+    val message: String,
+    val version: String,
+    val uses: String
+)
 
 interface ApiService {
+    @GET("health")
+    suspend fun checkHealth(
+        @Header("X-API-Key") apiKey: String = AppConfig.API_KEY
+    ): HealthResponse
+    
     @POST("download")
     suspend fun downloadVideo(
         @Body request: DownloadRequest,

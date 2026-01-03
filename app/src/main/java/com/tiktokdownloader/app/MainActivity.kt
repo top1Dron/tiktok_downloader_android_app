@@ -26,6 +26,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.delay
 import okhttp3.ResponseBody
 import java.io.File
 import java.io.FileOutputStream
@@ -95,6 +98,10 @@ class MainActivity : AppCompatActivity() {
             }
         })
         
+        binding.syncButton.setOnClickListener {
+            synchronizeBackend()
+        }
+        
         binding.downloadButton.setOnClickListener {
             val url = binding.urlEditText.text.toString().trim()
             if (url.isEmpty()) {
@@ -148,6 +155,89 @@ class MainActivity : AppCompatActivity() {
             }
         } else {
             Toast.makeText(this, "Clipboard is empty", Toast.LENGTH_SHORT).show()
+        }
+    }
+    
+    private fun synchronizeBackend() {
+        binding.syncButton.isEnabled = false
+        
+        lifecycleScope.launch {
+            try {
+                // First attempt: Try with 1 second timeout
+                val startTime = System.currentTimeMillis()
+                var success = false
+                
+                try {
+                    withTimeout(1000) { // 1 second timeout
+                        val response = apiService.checkHealth()
+                        success = true
+                    }
+                } catch (e: TimeoutCancellationException) {
+                    // Timeout - backend is sleeping, need to wake it up
+                    Log.d("MainActivity", "Health check timed out, backend is sleeping")
+                } catch (e: Exception) {
+                    // Other error - backend might be sleeping
+                    Log.d("MainActivity", "Health check failed: ${e.message}")
+                }
+                
+                if (success) {
+                    // Backend responded in 1 second - show success
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Backend is ready!",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    binding.syncButton.isEnabled = true
+                    return@launch
+                }
+                
+                // Backend didn't respond in 1 second - show loader and retry
+                binding.syncLoaderOverlay.visibility = android.view.View.VISIBLE
+                binding.syncLoaderText.text = "Syncing backend..."
+                
+                // Retry until success or 3 minutes pass
+                val maxWaitTime = 3 * 60 * 1000L // 3 minutes in milliseconds
+                val retryInterval = 2000L // Retry every 2 seconds
+                
+                while (System.currentTimeMillis() - startTime < maxWaitTime) {
+                    try {
+                        val response = apiService.checkHealth()
+                        // Success!
+                        binding.syncLoaderOverlay.visibility = android.view.View.GONE
+                        Toast.makeText(
+                            this@MainActivity,
+                            "Backend synchronized!",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        binding.syncButton.isEnabled = true
+                        return@launch
+                    } catch (e: Exception) {
+                        // Still not ready, continue retrying
+                        val elapsed = (System.currentTimeMillis() - startTime) / 1000
+                        binding.syncLoaderText.text = "Syncing backend... (${elapsed}s)"
+                        delay(retryInterval)
+                    }
+                }
+                
+                // 3 minutes passed without success
+                binding.syncLoaderOverlay.visibility = android.view.View.GONE
+                Toast.makeText(
+                    this@MainActivity,
+                    "Backend synchronization timeout. Please try again.",
+                    Toast.LENGTH_LONG
+                ).show()
+                binding.syncButton.isEnabled = true
+                
+            } catch (e: Exception) {
+                binding.syncLoaderOverlay.visibility = android.view.View.GONE
+                Toast.makeText(
+                    this@MainActivity,
+                    "Synchronization error: ${e.message}",
+                    Toast.LENGTH_SHORT
+                ).show()
+                Log.e("MainActivity", "Synchronization error", e)
+                binding.syncButton.isEnabled = true
+            }
         }
     }
     
