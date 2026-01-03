@@ -1,49 +1,27 @@
 # TikTok Downloader Android App
 
-A native Android application for downloading TikTok videos using the TikTok Downloader backend API.
+A self-contained native Android application for downloading TikTok videos directly on your device. No backend server required!
 
 ## Features
 
-- 📥 Download TikTok videos by URL
-- 🔄 Real-time download progress via WebSocket
+- 📥 Download TikTok videos by URL directly on your device
+- 🐍 Uses Python 3.12 (via Chaquopy) with yt-dlp for reliable downloads
 - 📚 Download history with local SQLite storage
 - 🔁 View and re-download previous downloads
 - 💾 Save videos to Downloads/TikTokDownloads folder
 - 🎨 Modern Material Design UI
-- 🔐 Environment-based configuration (.env file)
+- 📋 One-tap paste from clipboard (clears and pastes in one action)
 
 ## Prerequisites
 
 - **Android Studio** - Download from [developer.android.com/studio](https://developer.android.com/studio)
 - **JDK 17+** - Included with Android Studio
 - **Android SDK** - Installed via Android Studio SDK Manager
-- **Backend Server** - The Python backend must be running (see [backend README](../tiktok_downloader_backend/README.md))
+- **Python 3.12** - Required for building (used by Chaquopy to compile Python bytecode)
 
 ## Quick Start
 
-### 1. Configure Environment Variables
-
-Before building, configure the backend server URL and API key using a `.env` file:
-
-1. **Copy the example file:**
-   ```bash
-   cp app/src/main/assets/.env.example app/src/main/assets/.env
-   ```
-
-2. **Edit `app/src/main/assets/.env` and set your values:**
-   ```env
-   BASE_URL=http://YOUR_SERVER_IP:8000/
-   API_KEY=your-api-key-here
-   ```
-   
-   - **For Android Emulator:** `BASE_URL=http://10.0.2.2:8000/`
-   - **For Physical Device:** `BASE_URL=http://YOUR_COMPUTER_IP:8000/`
-     - Find your IP: `ifconfig` (Mac/Linux) or `ipconfig` (Windows)
-   - **API_KEY:** Leave empty if your backend doesn't require an API key
-
-**Note:** The `.env` file is automatically loaded when the app starts. No code changes needed!
-
-### 2. Build the APK
+### 1. Build the APK
 
 **Using Android Studio:**
 1. Open the project in Android Studio
@@ -58,13 +36,13 @@ cd tiktok_downloader_android_app
 gradlew.bat assembleDebug  # Windows
 ```
 
-### 3. Install and Run
+### 2. Install and Run
 
 1. Transfer the APK to your Android device
 2. Enable "Install from Unknown Sources" in device settings
 3. Install the APK
-4. Start the backend server (see [backend README](../tiktok_downloader_backend/README.md))
-5. Open the app and enter a TikTok URL
+4. Open the app and enter a TikTok URL
+5. Tap "Download" - the video will be downloaded directly on your device!
 
 ## Project Structure
 
@@ -75,13 +53,12 @@ tiktok_downloader_android_app/
 │   └── src/main/
 │       ├── AndroidManifest.xml
 │       ├── assets/
-│       │   └── .env.example      # Environment variables template
 │       ├── java/com/tiktokdownloader/app/
-│       │   ├── AppConfig.kt          # Environment configuration loader
-│       │   ├── ApiService.kt         # API client
 │       │   ├── MainActivity.kt       # Main download screen
 │       │   ├── HistoryActivity.kt    # Download history
-│       │   ├── WebSocketService.kt   # WebSocket client for real-time updates
+│       │   ├── PythonTikTokDownloader.kt  # Python wrapper (Chaquopy)
+│       │   ├── python/
+│       │   │   └── tiktok_downloader.py  # Python downloader (yt-dlp)
 │       │   └── data/                 # Room database for local storage
 │       │       ├── AppDatabase.kt
 │       │       ├── DownloadHistory.kt
@@ -92,49 +69,39 @@ tiktok_downloader_android_app/
 └── README.md                      # This file
 ```
 
-## Configuration
+## How It Works
 
-### Environment Variables (.env file)
+The app is **completely self-contained** and doesn't require any backend server:
 
-All configuration is done via a `.env` file in `app/src/main/assets/`:
-
-1. **Copy the example file:**
-   ```bash
-   cp app/src/main/assets/.env.example app/src/main/assets/.env
-   ```
-
-2. **Edit `.env` file:**
-   ```env
-   BASE_URL=http://your-server:8000/
-   API_KEY=your-api-key-here
-   ```
-
-3. **Rebuild the app** - The configuration is loaded at runtime.
-
-**How it works:**
-- The `.env` file is bundled into the APK at build time
-- When the app starts, `AppConfig.initialize()` loads values from the `.env` file
-- Values are accessed via `AppConfig.BASE_URL` and `AppConfig.API_KEY`
-- If `.env` is missing, default values are used
-
-**Note:** The `.env` file is gitignored and won't be committed to version control. Use `.env.example` as a template.
+1. **Python Integration**: Uses [Chaquopy](https://chaquo.com/chaquopy/) to embed Python 3.12 runtime in the Android app
+2. **TikTok Downloader**: Uses `yt-dlp` (a Python library) to download videos directly from TikTok
+3. **Local Processing**: All video downloads happen on your device - no data is sent to external servers
+4. **Offline Capable**: Once built, the app works completely offline (except for downloading videos from TikTok)
 
 ## Features in Detail
 
 ### Download Videos
 
-1. Enter a TikTok URL in the main screen
+1. Enter a TikTok URL in the main screen (or use the paste button to paste from clipboard)
 2. Tap "Download"
-3. The app connects to the backend via WebSocket for real-time updates
+3. The app uses Python/yt-dlp to download the video directly on your device
 4. Download progress is shown in real-time
 5. Completed videos are saved to Downloads/TikTokDownloads folder
+
+### Paste Button
+
+- The paste button (📋 icon) in the URL input field:
+  - **Always clears** the input field first
+  - **Then pastes** the clipboard content
+  - This ensures a clean paste every time
 
 ### Download History
 
 - All downloads are stored locally in SQLite (Room database)
 - View download history in the History screen
 - Re-download videos from history
-- History persists even if the backend is offline
+- Clear all history with the "Clear All History" button
+- History persists across app restarts
 
 ### File Storage
 
@@ -152,15 +119,15 @@ All configuration is done via a `.env` file in `app/src/main/assets/`:
 - **Gradle:** 8.2
 - **Android Gradle Plugin:** 8.2.0
 - **JDK:** 17+
+- **Python:** 3.12 (for building - Chaquopy uses it to compile Python bytecode)
 
 ## Dependencies
 
 - **Room** - Local SQLite database
-- **Retrofit** - HTTP client for API calls
-- **OkHttp** - HTTP client with WebSocket support
 - **Coroutines** - Asynchronous programming
 - **Material Components** - UI components
-- **dotenv-kotlin** - Environment variable loader
+- **Chaquopy** - Python runtime for Android
+- **yt-dlp** - Python library for downloading videos (embedded via Chaquopy)
 
 ## Building in Android Studio
 
@@ -177,16 +144,7 @@ All configuration is done via a `.env` file in `app/src/main/assets/`:
 - Wait until you see **"Gradle sync finished"** in the status bar
 - If there are errors, see Troubleshooting section below
 
-### Step 3: Configure Environment Variables
-
-1. Copy `.env.example` to `.env`:
-   ```bash
-   cp app/src/main/assets/.env.example app/src/main/assets/.env
-   ```
-
-2. Edit `app/src/main/assets/.env` with your backend URL and API key
-
-### Step 4: Build the APK
+### Step 3: Build the APK
 
 **Option A: Build APK directly (Recommended for testing)**
 1. In the top menu, go to **Build > Build Bundle(s) / APK(s) > Build APK(s)**
@@ -230,19 +188,17 @@ All configuration is done via a `.env` file in `app/src/main/assets/`:
 - Set the JDK location (usually Android Studio includes it)
 - Or download JDK 17 from https://adoptium.net/
 
+**Python Not Found (Chaquopy build errors):**
+- Make sure Python 3.12 is installed on your system
+- On macOS with Homebrew: `brew install python@3.12`
+- Update the `buildPython` path in `app/build.gradle.kts` if Python 3.12 is installed in a different location
+- The path should point to the Python 3.12 executable (e.g., `/opt/homebrew/bin/python3.12` on macOS)
+
 **Build Errors:**
 - Clean the project: **Build > Clean Project**
 - Rebuild: **Build > Rebuild Project**
 
 ### Runtime Issues
-
-**Connection Error / Can't Connect to Server:**
-- Make sure the Python backend server is running
-- Check that `BASE_URL` in `.env` file is correct:
-  - For emulator: `http://10.0.2.2:8000/`
-  - For physical device: `http://YOUR_COMPUTER_IP:8000/` (not `localhost`)
-- Make sure your computer and device are on the same network
-- Check firewall settings (port 8000 should be accessible)
 
 **Permission Denied:**
 - The app will request storage permissions when needed
@@ -256,11 +212,16 @@ All configuration is done via a `.env` file in `app/src/main/assets/`:
 - Files are saved to Downloads/TikTokDownloads folder (not app's private storage)
 - On some Android 10+ devices, if subfolder creation fails, files may be saved directly to Downloads/
 
+**Download Fails:**
+- Make sure you have an internet connection
+- Verify the TikTok URL is valid and the video is publicly accessible
+- Some videos may be region-locked or require login
+- Check Logcat in Android Studio for detailed error messages
+
 **App Crashes:**
 - Check Logcat in Android Studio (bottom panel) for error messages
 - Make sure all required permissions are granted
-- Verify the backend server is running and accessible
-- Check that `.env` file exists and is properly formatted
+- Try uninstalling and reinstalling the app
 
 ### Common Error Messages
 
@@ -275,6 +236,11 @@ All configuration is done via a `.env` file in `app/src/main/assets/`:
 **"Could not find or load main class"**
 - Invalidate caches: **File > Invalidate Caches / Restart**
 
+**"Python 3.12 is not available for the ABI 'armeabi-v7a'"**
+- This is expected - Python 3.12 only supports `arm64-v8a` and `x86_64` ABIs
+- The app is configured to only build for these architectures
+- If you need support for older devices, you may need to use an older Python version (but yt-dlp requires Python 3.10+)
+
 ## Development
 
 ### Running in Android Studio
@@ -288,42 +254,34 @@ All configuration is done via a `.env` file in `app/src/main/assets/`:
 
 - Use Android Studio's **Logcat** to view logs
 - Set breakpoints in Kotlin code
-- Use **Network Inspector** to debug API calls
-- Check **AppConfig** logs to verify `.env` loading
+- Python errors from yt-dlp will appear in Logcat as well
+- Look for tags: `MainActivity`, `PythonTikTokDownloader`, `Python`
 
-### Environment Variables Debugging
+### Python Code
 
-To verify `.env` is loaded correctly, check Logcat for:
-```
-AppConfig: Could not load .env file: ...
-```
+The Python downloader is located at:
+- `app/src/main/python/tiktok_downloader.py`
 
-If you see this warning, the `.env` file is missing or has errors. Check:
-1. File exists: `app/src/main/assets/.env`
-2. File format is correct (no spaces around `=`)
-3. Rebuild the app after creating/editing `.env`
+This file is embedded in the APK and runs via Chaquopy's Python runtime. To modify the downloader:
+1. Edit `tiktok_downloader.py`
+2. Rebuild the app
+3. The changes will be included in the new APK
 
-## API Integration
+## Technical Details
 
-The app communicates with the backend via:
+### Chaquopy Integration
 
-- **REST API** - For download requests and status checks
-- **WebSocket** - For real-time download progress updates
+- **Python Version:** 3.12
+- **Python Library:** yt-dlp 2025.12.8
+- **ABI Support:** arm64-v8a, x86_64 (Python 3.12 limitation)
+- **Build Python:** Uses system Python 3.12 to compile bytecode during build
 
-### API Endpoints Used
+### Architecture
 
-- `POST /download` - Start video download
-- `GET /download/status/{task_id}` - Get download status
-- `GET /download/file/{file_name}` - Download video file
-- `WS /ws/{client_id}` - WebSocket for real-time updates
-
-See [backend API documentation](../tiktok_downloader_backend/readme_files/API_USAGE.md) for details.
-
-## Related Documentation
-
-- **Backend README**: See `../tiktok_downloader_backend/README.md`
-- **Backend API Usage**: See `../tiktok_downloader_backend/readme_files/API_USAGE.md`
-- **Backend WebSocket Usage**: See `../tiktok_downloader_backend/readme_files/WEBSOCKET_USAGE.md`
+- **MainActivity**: UI and user interaction
+- **PythonTikTokDownloader**: Kotlin wrapper that calls Python code via Chaquopy
+- **tiktok_downloader.py**: Python class that uses yt-dlp to download videos
+- **AppDatabase**: Room database for storing download history locally
 
 ## License
 

@@ -3,8 +3,11 @@
 ## Prerequisites
 
 1. **Android Studio** - Download from https://developer.android.com/studio
-2. **JDK 17** - Android Studio includes this automatically
+2. **JDK 17+** - Android Studio includes this automatically
 3. **Android SDK** - Installed via Android Studio SDK Manager (usually done automatically)
+4. **Python 3.12** - Required for building (Chaquopy uses it to compile Python bytecode)
+   - On macOS with Homebrew: `brew install python@3.12`
+   - Update `buildPython` path in `app/build.gradle.kts` if Python 3.12 is in a different location
 
 ## Building the APK in Android Studio
 
@@ -27,28 +30,9 @@
 - Wait until you see **"Gradle sync finished"** or **"Gradle build finished"**
 - If there are errors, see the Troubleshooting section below
 
-### Step 3: Configure API Server URL (Important!)
+**Note:** The first sync may take 10-15 minutes as it downloads dependencies and sets up Chaquopy (Python runtime for Android).
 
-Before building, configure the backend server URL:
-
-1. In the Project view (left sidebar), navigate to:
-   ```
-   app > src > main > java > com > tiktokdownloader > app > ApiService.kt
-   ```
-
-2. Open `ApiService.kt` and find the `BASE_URL` constant (around line 21)
-
-3. Update the URL based on your setup:
-   - **For Android Emulator:** `http://10.0.2.2:8000/`
-   - **For Physical Device:** `http://YOUR_COMPUTER_IP:8000/`
-     - To find your computer's IP address:
-       - **Mac/Linux:** Open Terminal and run: `ifconfig | grep "inet "` or `ip addr`
-       - **Windows:** Open Command Prompt and run: `ipconfig`
-       - Look for your local network IP (usually starts with `192.168.` or `10.0.`)
-
-4. Save the file (Ctrl+S / Cmd+S)
-
-### Step 4: Build the APK
+### Step 3: Build the APK
 
 **Option A: Build APK directly (Recommended for testing)**
 
@@ -67,7 +51,7 @@ Before building, configure the backend server URL:
 3. Select your device/emulator from the list
 4. The app will build, install, and launch automatically
 
-### Step 5: Install the APK
+### Step 4: Install the APK
 
 **On Physical Device:**
 
@@ -109,34 +93,6 @@ If you prefer using the command line:
 4. The APK will be at:
    ```
    app/build/outputs/apk/debug/app-debug.apk
-   ```
-
-## Running the Backend Server
-
-Before using the Android app, you need to start the Python backend server:
-
-1. Navigate to the backend directory:
-   ```bash
-   cd /path/to/tiktok_downloader_backend
-   ```
-
-2. Start the server:
-   ```bash
-   # Using Poetry (recommended):
-   poetry run python api_server.py
-   
-   # Or if using virtual environment:
-   source .venv/bin/activate  # On Mac/Linux
-   # or
-   .venv\Scripts\activate  # On Windows
-   python api_server.py
-   ```
-
-3. The server should be accessible at `http://localhost:8000`
-
-4. Also make sure Celery worker is running (in a separate terminal):
-   ```bash
-   poetry run celery -A celery_app worker --loglevel=info --pool=solo
    ```
 
 ## Troubleshooting
@@ -204,7 +160,7 @@ This is usually caused by Gradle version incompatibility or corrupt cache. Follo
 - Make sure you have internet connection (Gradle needs to download dependencies)
 - Check Android Studio's Gradle settings: **File > Settings > Build Tools > Gradle**
   - Use Gradle from: **'gradle-wrapper.properties' file**
-  - Gradle JDK: Should be set to a JDK 17
+  - Gradle JDK: Should be set to a JDK 17+
 
 **SDK Not Found:**
 - Go to **Tools > SDK Manager**
@@ -217,6 +173,13 @@ This is usually caused by Gradle version incompatibility or corrupt cache. Follo
 - Set the JDK location (usually Android Studio includes it)
 - Or download JDK 17 from https://adoptium.net/
 
+**Python Not Found (Chaquopy build errors):**
+- Make sure Python 3.12 is installed on your system
+- On macOS with Homebrew: `brew install python@3.12`
+- Verify Python 3.12 is in your PATH: `python3.12 --version`
+- Update the `buildPython` path in `app/build.gradle.kts` if Python 3.12 is installed in a different location
+- The path should point to the Python 3.12 executable (e.g., `/opt/homebrew/bin/python3.12` on macOS)
+
 **Build Errors:**
 - Clean the project: **Build > Clean Project**
 - Rebuild: **Build > Rebuild Project**
@@ -228,25 +191,35 @@ This is usually caused by Gradle version incompatibility or corrupt cache. Follo
   - **Build > Clean Project**
   - **Build > Rebuild Project**
 
-### Runtime Issues
+**"Python 3.12 is not available for the ABI 'armeabi-v7a'":**
+- This is expected - Python 3.12 only supports `arm64-v8a` and `x86_64` ABIs
+- The app is configured to only build for these architectures
+- If you need support for older devices, you may need to use an older Python version (but yt-dlp requires Python 3.10+)
 
-**Connection Error / Can't Connect to Server:**
-- Make sure the Python backend server is running
-- Check that `BASE_URL` in `ApiService.kt` is correct:
-  - For emulator: `http://10.0.2.2:8000/`
-  - For physical device: `http://YOUR_COMPUTER_IP:8000/` (not `localhost`)
-- Make sure your computer and device are on the same network
-- Check firewall settings (port 8000 should be accessible)
+### Runtime Issues
 
 **Permission Denied:**
 - The app will request storage permissions when needed
 - Grant permissions when prompted
 - If denied, go to **Settings > Apps > TikTok Downloader > Permissions** and enable Storage
 
+**Download Fails:**
+- Make sure you have an internet connection
+- Verify the TikTok URL is valid and the video is publicly accessible
+- Some videos may be region-locked or require login
+- Check Logcat in Android Studio for detailed error messages
+
+**Files Not Saving:**
+- Check storage permissions are granted
+- Verify device has available storage
+- Check Logcat in Android Studio for error messages
+- Files are saved to Downloads/TikTokDownloads folder (not app's private storage)
+- On some Android 10+ devices, if subfolder creation fails, files may be saved directly to Downloads/
+
 **App Crashes:**
 - Check Logcat in Android Studio (bottom panel) for error messages
 - Make sure all required permissions are granted
-- Verify the backend server is running and accessible
+- Try uninstalling and reinstalling the app
 
 ### Common Error Messages
 
@@ -308,10 +281,11 @@ tiktok_downloader_android_app/
 │       └── main/
 │           ├── AndroidManifest.xml
 │           ├── java/com/tiktokdownloader/app/
-│           │   ├── ApiService.kt          # API client (update BASE_URL here!)
-│           │   ├── MainActivity.kt       # Main screen
+│           │   ├── MainActivity.kt       # Main download screen
 │           │   ├── HistoryActivity.kt    # Download history
-│           │   └── WebSocketService.kt   # WebSocket client
+│           │   ├── PythonTikTokDownloader.kt  # Python wrapper (Chaquopy)
+│           │   └── python/
+│           │       └── tiktok_downloader.py  # Python downloader (yt-dlp)
 │           └── res/                      # Resources (layouts, strings, etc.)
 ├── build.gradle.kts              # Project-level build configuration
 └── settings.gradle.kts           # Project settings
@@ -321,9 +295,10 @@ tiktok_downloader_android_app/
 
 After successfully building and installing the app:
 
-1. **Start the backend server** (see "Running the Backend Server" above)
-2. **Start Celery worker** for background downloads
-3. **Open the app** on your device/emulator
-4. **Enter a TikTok URL** and tap Download
-5. **Check download history** to see completed downloads
+1. **Open the app** on your device/emulator
+2. **Enter a TikTok URL** (or use the paste button to paste from clipboard)
+3. **Tap Download** - the video will be downloaded directly on your device!
+4. **Check download history** to see completed downloads
+5. **Videos are saved** to Downloads/TikTokDownloads folder
 
+**Note:** The app is completely self-contained and doesn't require any backend server. All downloads happen directly on your device using Python (via Chaquopy) and yt-dlp.
