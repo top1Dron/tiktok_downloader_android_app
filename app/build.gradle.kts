@@ -2,6 +2,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("com.google.devtools.ksp")
+    id("com.chaquo.python")
 }
 
 android {
@@ -16,6 +17,12 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        
+        // Chaquopy Python configuration
+        // Python 3.12 only supports arm64-v8a and x86_64
+        ndk {
+            abiFilters += listOf("arm64-v8a", "x86_64")
+        }
     }
 
     buildTypes {
@@ -86,5 +93,18 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
+}
+
+// Chaquopy Python configuration
+chaquopy {
+    defaultConfig {
+        version = "3.12"
+        // Use system Python 3.12 for bytecode compilation
+        buildPython("/opt/homebrew/bin/python3.12")
+        pip {
+            // Install specific yt-dlp version (requires Python 3.10+)
+            install("yt-dlp==2025.12.8")
+        }
+    }
 }
 

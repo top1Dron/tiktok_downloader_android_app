@@ -29,19 +29,21 @@ class HistoryActivity : AppCompatActivity() {
     private lateinit var binding: ActivityHistoryBinding
     private lateinit var database: AppDatabase
     private lateinit var historyAdapter: HistoryAdapter
-    private lateinit var apiService: ApiService
+    private lateinit var tiktokDownloader: PythonTikTokDownloader
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // Initialize configuration from .env file FIRST
-        AppConfig.initialize(this)
-        
-        // Initialize API service AFTER AppConfig is loaded
-        apiService = ApiService.create()
-        
         binding = ActivityHistoryBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        
+        // Initialize Python runtime for TikTok downloader
+        PythonTikTokDownloader.initializePython(this)
+        
+        // Initialize Python TikTok downloader with cache directory
+        val cacheDir = File(cacheDir, "tiktok_downloads")
+        cacheDir.mkdirs()
+        tiktokDownloader = PythonTikTokDownloader(cacheDir)
         
         // Setup toolbar
         setSupportActionBar(binding.toolbar)
@@ -111,170 +113,109 @@ class HistoryActivity : AppCompatActivity() {
     }
     
     private fun reloadVideo(history: DownloadHistory) {
-        if (history.status == "completed" && history.fileName != null) {
-            // Download the file again
-            downloadVideoFile(history.fileName)
+        if (history.status == "completed" && history.filePath != null) {
+            // Check if file exists
+            val file = File(history.filePath)
+            if (file.exists()) {
+                // Move to Downloads if not already there
+                moveVideoToDownloads(file)
+            } else {
+                // File doesn't exist, re-download
+                downloadVideo(history.url)
+            }
         } else {
             // Restart download
-            lifecycleScope.launch {
-                try {
-                    val response = apiService.downloadVideo(DownloadRequest(history.url))
-                    if (response.success && response.file_name != null) {
-                        Toast.makeText(this@HistoryActivity, "Download completed", Toast.LENGTH_SHORT).show()
-                        // Update database
-                        val updated = history.copy(
-                            taskId = response.file_name,
-                            fileName = response.file_name,
-                            filePath = response.file_path,
-                            status = "completed",
-                            completedAt = System.currentTimeMillis(),
-                            error = null
-                        )
-                        database.downloadHistoryDao().update(updated)
-                        // Download the file
-                        downloadVideoFile(response.file_name)
-                    }
-                } catch (e: Exception) {
-                    Toast.makeText(this@HistoryActivity, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+            downloadVideo(history.url)
+        }
+    }
+    
+    private fun downloadVideo(url: String) {
+        lifecycleScope.launch {
+            try {
+                // Download video directly using local TikTokDownloader
+                val filePath = withContext(Dispatchers.IO) {
+                    tiktokDownloader.download(url)
                 }
+                
+                val file = File(filePath)
+                val fileName = file.name
+                
+                // Create or update history entry
+                val newHistory = DownloadHistory(
+                    taskId = fileName,
+                    url = url,
+                    fileName = fileName,
+                    filePath = filePath,
+                    status = "completed",
+                    completedAt = System.currentTimeMillis()
+                )
+                database.downloadHistoryDao().insert(newHistory)
+                
+                // Move file to Downloads folder
+                moveVideoToDownloads(file)
+                Toast.makeText(this@HistoryActivity, "Download completed", Toast.LENGTH_SHORT).show()
+                
+            } catch (e: DownloadError) {
+                Toast.makeText(this@HistoryActivity, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                Log.e("HistoryActivity", "Download error", e)
+            } catch (e: Exception) {
+                Toast.makeText(this@HistoryActivity, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                Log.e("HistoryActivity", "Unexpected error", e)
             }
         }
     }
     
-    private fun downloadVideoFile(fileName: String) {
+    private fun moveVideoToDownloads(sourceFile: File) {
+        if (!sourceFile.exists()) {
+            Log.e("HistoryActivity", "Source file does not exist: ${sourceFile.absolutePath}")
+            return
+        }
+        
         lifecycleScope.launch {
             try {
-                val encodedFileName = java.net.URLEncoder.encode(fileName, "UTF-8")
-                    .replace("+", "%20")
-                val response = apiService.getVideoFile(encodedFileName)
-                
-                if (response.isSuccessful && response.body() != null) {
-                    // Generate new filename with timestamp
-                    val newFileName = generateTimestampFileName()
-                    
-                    val result = withContext(Dispatchers.IO) {
-                        saveVideoToDownloads(newFileName, response.body()!!)
-                    }
-                    
-                    if (result.success) {
-                        Toast.makeText(
-                            this@HistoryActivity,
-                            "Video saved to Downloads/TikTokDownloads: $newFileName",
-                            Toast.LENGTH_LONG
-                        ).show()
+                val newFileName = generateTimestampFileName()
+                val result = withContext(Dispatchers.IO) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        saveVideoWithMediaStoreFromFile(newFileName, sourceFile)
                     } else {
-                        Toast.makeText(
-                            this@HistoryActivity,
-                            "Failed to save file: ${result.error}",
-                            Toast.LENGTH_LONG
-                        ).show()
-                        Log.e("HistoryActivity", "Save failed: ${result.error}")
+                        saveVideoDirectlyFromFile(newFileName, sourceFile)
                     }
+                }
+                
+                if (result.success) {
+                    sourceFile.delete()
+                    Toast.makeText(
+                        this@HistoryActivity,
+                        "Video saved to Downloads/TikTokDownloads: $newFileName",
+                        Toast.LENGTH_LONG
+                    ).show()
                 } else {
                     Toast.makeText(
                         this@HistoryActivity,
-                        "Failed to download file",
-                        Toast.LENGTH_SHORT
+                        "Failed to save file: ${result.error}",
+                        Toast.LENGTH_LONG
                     ).show()
+                    Log.e("HistoryActivity", "Save failed: ${result.error}")
                 }
             } catch (e: Exception) {
+                Log.e("HistoryActivity", "Exception moving file", e)
                 Toast.makeText(
                     this@HistoryActivity,
-                    "Error: ${e.message}",
-                    Toast.LENGTH_SHORT
+                    "Error saving file: ${e.message}",
+                    Toast.LENGTH_LONG
                 ).show()
             }
         }
     }
     
-    private fun generateTimestampFileName(): String {
-        val dateFormat = SimpleDateFormat("yyyy-MM-dd_HHmmss", Locale.getDefault())
-        return "${dateFormat.format(Date())}.mp4"
-    }
-    
-    data class SaveResult(val success: Boolean, val error: String? = null)
-    
-    private fun saveVideoToDownloads(fileName: String, body: okhttp3.ResponseBody): SaveResult {
+    private fun saveVideoDirectlyFromFile(fileName: String, sourceFile: File): SaveResult {
         return try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                // Android 10+: Try MediaStore first (preferred)
-                val downloadsResult = saveVideoWithMediaStore(fileName, body)
-                if (downloadsResult.success) {
-                    return downloadsResult
-                }
-                
-                // If MediaStore fails, fallback to app directory (always works)
-                Log.w("HistoryActivity", "MediaStore failed, saving to app directory")
-                saveVideoToAppDirectory(fileName, body)
-            } else {
-                // Android 9 and below: Direct file access
-                saveVideoDirectly(fileName, body)
-            }
-        } catch (e: Exception) {
-            Log.e("HistoryActivity", "Exception in saveVideoToDownloads", e)
-            SaveResult(false, e.message ?: "Unknown error: ${e.javaClass.simpleName}")
-        }
-    }
-    
-    private fun saveVideoToAppDirectory(fileName: String, body: okhttp3.ResponseBody): SaveResult {
-        return try {
-            // Ensure filename has .mp4 extension
             val finalFileName = if (!fileName.endsWith(".mp4", ignoreCase = true)) {
                 fileName.replace(Regex("\\.[^.]+$"), "") + ".mp4"
             } else {
                 fileName
             }
             
-            // Save to app's external files directory as fallback
-            val appDir = getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
-                ?: return SaveResult(false, "External storage not available")
-            
-            val tiktokDir = File(appDir, "TikTokDownloads")
-            if (!tiktokDir.exists() && !tiktokDir.mkdirs()) {
-                return SaveResult(false, "Cannot create directory")
-            }
-            
-            val file = File(tiktokDir, finalFileName)
-            
-            // Use buffered streams and ensure proper flushing
-            FileOutputStream(file).use { output ->
-                val bufferedOutput = output.buffered(8192)
-                body.byteStream().use { input ->
-                    val bufferedInput = input.buffered(8192)
-                    bufferedInput.copyTo(bufferedOutput)
-                }
-                bufferedOutput.flush()
-                output.flush()
-            }
-            
-            if (!file.exists() || file.length() == 0L) {
-                return SaveResult(false, "File was not saved correctly")
-            }
-            
-            // Notify media scanner
-            val mediaScanIntent = Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE)
-            mediaScanIntent.data = Uri.fromFile(file)
-            sendBroadcast(mediaScanIntent)
-            
-            Log.d("HistoryActivity", "File saved to app directory: ${file.absolutePath}, size: ${file.length()}")
-            SaveResult(true, "Saved to app folder: ${file.absolutePath}")
-        } catch (e: Exception) {
-            Log.e("HistoryActivity", "Error saving to app directory", e)
-            SaveResult(false, e.message ?: "Error: ${e.javaClass.simpleName}")
-        }
-    }
-    
-    @Suppress("DEPRECATION")
-    private fun saveVideoDirectly(fileName: String, body: okhttp3.ResponseBody): SaveResult {
-        return try {
-            // Ensure filename has .mp4 extension
-            val finalFileName = if (!fileName.endsWith(".mp4", ignoreCase = true)) {
-                fileName.replace(Regex("\\.[^.]+$"), "") + ".mp4"
-            } else {
-                fileName
-            }
-            
-            // Check if external storage is available
             if (!Environment.getExternalStorageState().equals(Environment.MEDIA_MOUNTED)) {
                 return SaveResult(false, "External storage not available")
             }
@@ -285,39 +226,21 @@ class HistoryActivity : AppCompatActivity() {
             }
             
             val tiktokDir = File(downloadsDir, "TikTokDownloads")
-            
-            // Create TikTokDownloads folder if it doesn't exist
             if (!tiktokDir.exists() && !tiktokDir.mkdirs()) {
                 return SaveResult(false, "Cannot create TikTokDownloads folder")
             }
             
-            if (!tiktokDir.canWrite()) {
-                return SaveResult(false, "No write permission to TikTokDownloads folder")
+            val destFile = File(tiktokDir, finalFileName)
+            sourceFile.copyTo(destFile, overwrite = true)
+            
+            if (!destFile.exists() || destFile.length() == 0L) {
+                return SaveResult(false, "File was not copied correctly")
             }
             
-            val file = File(tiktokDir, finalFileName)
-            
-            // Use buffered streams and ensure proper flushing
-            FileOutputStream(file).use { output ->
-                val bufferedOutput = output.buffered(8192)
-                body.byteStream().use { input ->
-                    val bufferedInput = input.buffered(8192)
-                    bufferedInput.copyTo(bufferedOutput)
-                }
-                bufferedOutput.flush()
-                output.flush()
-            }
-            
-            if (!file.exists() || file.length() == 0L) {
-                return SaveResult(false, "File was not saved correctly")
-            }
-            
-            // Notify media scanner
             val mediaScanIntent = Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE)
-            mediaScanIntent.data = Uri.fromFile(file)
+            mediaScanIntent.data = Uri.fromFile(destFile)
             sendBroadcast(mediaScanIntent)
             
-            Log.d("HistoryActivity", "File saved successfully: ${file.absolutePath}, size: ${file.length()}")
             SaveResult(true)
         } catch (e: Exception) {
             Log.e("HistoryActivity", "Error saving file directly", e)
@@ -325,44 +248,26 @@ class HistoryActivity : AppCompatActivity() {
         }
     }
     
-    private fun saveVideoWithMediaStore(fileName: String, body: okhttp3.ResponseBody): SaveResult {
+    private fun saveVideoWithMediaStoreFromFile(fileName: String, sourceFile: File): SaveResult {
         return try {
-            // Ensure filename has .mp4 extension
             val finalFileName = if (!fileName.endsWith(".mp4", ignoreCase = true)) {
                 fileName.replace(Regex("\\.[^.]+$"), "") + ".mp4"
             } else {
                 fileName
             }
             
-            // Save to Downloads/TikTokDownloads folder
             var contentValues = ContentValues().apply {
                 put(MediaStore.MediaColumns.DISPLAY_NAME, finalFileName)
                 put(MediaStore.MediaColumns.MIME_TYPE, "video/mp4")
-                // Use RELATIVE_PATH to save to TikTokDownloads subfolder
                 put(MediaStore.MediaColumns.RELATIVE_PATH, "${Environment.DIRECTORY_DOWNLOADS}/TikTokDownloads")
             }
             
-            // Use MediaStore.Downloads for Android 10+ (API 29+)
-            val downloadsUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                MediaStore.Downloads.EXTERNAL_CONTENT_URI
-            } else {
-                MediaStore.Video.Media.EXTERNAL_CONTENT_URI
-            }
-            
+            val downloadsUri = MediaStore.Downloads.EXTERNAL_CONTENT_URI
             var uri = contentResolver.insert(downloadsUri, contentValues)
             
-            // If subfolder creation fails (some Android 10+ devices), try without subfolder
-            if (uri == null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                Log.d("HistoryActivity", "Subfolder creation failed, trying without subfolder")
+            if (uri == null) {
                 contentValues.remove(MediaStore.MediaColumns.RELATIVE_PATH)
                 uri = contentResolver.insert(downloadsUri, contentValues)
-            }
-            
-            // If Downloads collection fails, try Video collection
-            if (uri == null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                Log.d("HistoryActivity", "Downloads collection failed, trying Video collection with subfolder")
-                contentValues.put(MediaStore.MediaColumns.RELATIVE_PATH, "${Environment.DIRECTORY_DOWNLOADS}/TikTokDownloads")
-                uri = contentResolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, contentValues)
             }
             
             if (uri == null) {
@@ -374,12 +279,8 @@ class HistoryActivity : AppCompatActivity() {
             
             var bytesWritten = 0L
             outputStream.use { output ->
-                // Use buffered streams for better performance and reliability
-                val bufferedOutput = output.buffered(8192)
-                body.byteStream().use { input ->
-                    val bufferedInput = input.buffered(8192)
-                    bytesWritten = bufferedInput.copyTo(bufferedOutput)
-                    bufferedOutput.flush()
+                sourceFile.inputStream().use { input ->
+                    bytesWritten = input.copyTo(output)
                 }
             }
             
@@ -387,13 +288,11 @@ class HistoryActivity : AppCompatActivity() {
                 return SaveResult(false, "No data was written to file")
             }
             
-            // Update MediaStore with file size to ensure it's properly indexed
             val updateValues = ContentValues().apply {
                 put(MediaStore.MediaColumns.SIZE, bytesWritten)
             }
             contentResolver.update(uri, updateValues, null, null)
             
-            Log.d("HistoryActivity", "File saved successfully via MediaStore: $uri, bytes: $bytesWritten")
             SaveResult(true)
         } catch (e: SecurityException) {
             Log.e("HistoryActivity", "SecurityException saving file", e)
@@ -403,6 +302,13 @@ class HistoryActivity : AppCompatActivity() {
             SaveResult(false, e.message ?: "Error: ${e.javaClass.simpleName}")
         }
     }
+    
+    private fun generateTimestampFileName(): String {
+        val dateFormat = SimpleDateFormat("yyyy-MM-dd_HHmmss", Locale.getDefault())
+        return "${dateFormat.format(Date())}.mp4"
+    }
+    
+    data class SaveResult(val success: Boolean, val error: String? = null)
 }
 
 
