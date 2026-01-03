@@ -81,17 +81,12 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun setupClickListeners() {
-        // Initialize icon state based on current text
-        updateEndIcon()
-        
-        // Show/hide clear button based on text content
-        binding.urlEditText.addTextChangedListener(object : android.text.TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-            override fun afterTextChanged(s: android.text.Editable?) {
-                updateEndIcon()
-            }
-        })
+        // Always show paste button that clears and pastes in one action
+        binding.urlInputLayout.endIconMode = com.google.android.material.textfield.TextInputLayout.END_ICON_CUSTOM
+        binding.urlInputLayout.setEndIconDrawable(com.tiktokdownloader.app.R.drawable.ic_paste)
+        binding.urlInputLayout.setEndIconOnClickListener {
+            pasteFromClipboard()
+        }
         
         binding.downloadButton.setOnClickListener {
             val url = binding.urlEditText.text.toString().trim()
@@ -113,23 +108,11 @@ class MainActivity : AppCompatActivity() {
         }
     }
     
-    private fun updateEndIcon() {
-        val hasText = binding.urlEditText.text?.isNotEmpty() == true
-        
-        if (hasText) {
-            // Show clear button when there's text
-            binding.urlInputLayout.endIconMode = com.google.android.material.textfield.TextInputLayout.END_ICON_CLEAR_TEXT
-        } else {
-            // Show paste button when empty
-            binding.urlInputLayout.endIconMode = com.google.android.material.textfield.TextInputLayout.END_ICON_CUSTOM
-            binding.urlInputLayout.setEndIconDrawable(com.tiktokdownloader.app.R.drawable.ic_paste)
-            binding.urlInputLayout.setEndIconOnClickListener {
-                pasteFromClipboard()
-            }
-        }
-    }
-    
     private fun pasteFromClipboard() {
+        // First, clear the input field
+        binding.urlEditText.setText("")
+        
+        // Then, paste from clipboard
         val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         val clipData = clipboard.primaryClip
         
