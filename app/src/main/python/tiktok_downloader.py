@@ -9,6 +9,7 @@ from pathlib import Path
 import yt_dlp
 
 
+
 class DownloadError(Exception):
     """Custom exception for download errors."""
     pass
@@ -29,6 +30,31 @@ class TikTokDownloader:
         else:
             self.output_dir = output_dir
             Path(self.output_dir).mkdir(parents=True, exist_ok=True)
+
+    def _normalize_url(self, url: str) -> str:
+        """
+        Normalize TikTok URL to standard format.
+        Handles various TikTok URL formats.
+        """
+        url = url.strip()
+        
+        # Handle short URLs (vm.tiktok.com, tiktok.com/t/)
+        if "vm.tiktok.com" in url or "tiktok.com/t/" in url:
+            # These should work as-is, but ensure they're complete
+            if not url.startswith("http"):
+                url = "https://" + url
+            return url
+        
+        # Handle full URLs
+        if "tiktok.com" in url:
+            # Ensure it's https
+            if url.startswith("http://"):
+                url = url.replace("http://", "https://")
+            return url
+        
+        # If it doesn't look like a TikTok URL, return as-is
+        # (yt-dlp will handle the error)
+        return url
 
     def download(self, url: str) -> str:
         """
@@ -59,6 +85,9 @@ class TikTokDownloader:
                 del os.environ[var]
 
         try:
+            # Normalize URL - handle different TikTok URL formats
+            url = self._normalize_url(url)
+            
             ydl_opts = {
                 "outtmpl": os.path.join(self.output_dir, "%(title)s.%(ext)s"),
                 "format": "best[ext=mp4]/best",
@@ -80,7 +109,10 @@ class TikTokDownloader:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 try:
                     # Extract info to get the filename
+                    # Use process=True to get full video info
                     info = ydl.extract_info(url, download=False)
+                    # if not info:
+                    #     raise DownloadError("Failed to extract video information")
                     filename = ydl.prepare_filename(info)
                 except yt_dlp.DownloadError as e:
                     # Video not available, invalid URL, or extraction failed
@@ -114,10 +146,9 @@ class TikTokDownloader:
             # Re-raise DownloadError as-is
             raise
         except Exception as e:
-            # Unexpected errors - still return as DownloadError
+            # Unexpected errors - still return as DownloadError for 400 status
             raise DownloadError(f"Failed to download TikTok video: {str(e)}")
         finally:
             # Restore original proxy environment variables
             for var, value in original_proxy_vars.items():
                 os.environ[var] = value
-

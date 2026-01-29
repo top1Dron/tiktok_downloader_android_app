@@ -100,7 +100,7 @@ chaquopy {
         buildPython("/opt/homebrew/bin/python3.12")
         pip {
             // Install specific yt-dlp version (requires Python 3.10+)
-            install("yt-dlp==2025.12.8")
+            install("yt-dlp==2026.1.29")
         }
     }
 }
