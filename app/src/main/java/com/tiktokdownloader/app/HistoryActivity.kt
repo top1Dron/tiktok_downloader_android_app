@@ -98,8 +98,16 @@ class HistoryActivity : AppCompatActivity() {
     }
     
     private fun loadHistory() {
+        val filterPlatform = intent.getStringExtra("platform")
+        
         lifecycleScope.launch {
-            database.downloadHistoryDao().getAllHistory().collectLatest { historyList ->
+            val flow = if (filterPlatform != null) {
+                database.downloadHistoryDao().getHistoryByPlatform(filterPlatform)
+            } else {
+                database.downloadHistoryDao().getAllHistory()
+            }
+            
+            flow.collectLatest { historyList ->
                 if (historyList.isEmpty()) {
                     binding.emptyText.visibility = android.view.View.VISIBLE
                     binding.historyRecyclerView.visibility = android.view.View.GONE
@@ -121,18 +129,18 @@ class HistoryActivity : AppCompatActivity() {
                 moveVideoToDownloads(file)
             } else {
                 // File doesn't exist, re-download
-                downloadVideo(history.url)
+                downloadVideo(history.url, history.platform)
             }
         } else {
             // Restart download
-            downloadVideo(history.url)
+            downloadVideo(history.url, history.platform)
         }
     }
     
-    private fun downloadVideo(url: String) {
+    private fun downloadVideo(url: String, platform: String = "tiktok") {
         lifecycleScope.launch {
             try {
-                // Download video directly using local TikTokDownloader
+                // Download video using appropriate downloader
                 val filePath = withContext(Dispatchers.IO) {
                     tiktokDownloader.download(url)
                 }
@@ -146,6 +154,7 @@ class HistoryActivity : AppCompatActivity() {
                     url = url,
                     fileName = fileName,
                     filePath = filePath,
+                    platform = platform,
                     status = "completed",
                     completedAt = System.currentTimeMillis()
                 )

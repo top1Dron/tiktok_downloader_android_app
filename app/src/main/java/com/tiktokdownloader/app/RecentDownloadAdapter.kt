@@ -30,9 +30,24 @@ class RecentDownloadAdapter(
     ) : RecyclerView.ViewHolder(binding.root) {
         
         fun bind(history: DownloadHistory) {
-            binding.fileNameText.text = history.fileName ?: "Unknown"
+            // Display original video title (or use filePath as fallback for old entries)
+            val displayName = if (history.fileName.isNullOrEmpty()) {
+                history.filePath ?: "Unknown"
+            } else {
+                history.fileName
+            }
+            binding.fileNameText.text = displayName
             binding.urlText.text = history.url
             binding.statusText.text = history.status.replaceFirstChar { it.uppercase() }
+            
+            // Set platform badge
+            binding.platformBadge.text = history.platform.uppercase()
+            binding.platformBadge.setBackgroundColor(
+                when (history.platform) {
+                    "instagram" -> android.graphics.Color.parseColor("#E4405F")
+                    else -> android.graphics.Color.parseColor("#000000")
+                }
+            )
             
             binding.reloadButton.setOnClickListener {
                 onReloadClick(history)

@@ -8,8 +8,14 @@ interface DownloadHistoryDao {
     @Query("SELECT * FROM download_history ORDER BY createdAt DESC")
     fun getAllHistory(): Flow<List<DownloadHistory>>
     
+    @Query("SELECT * FROM download_history WHERE platform = :platform ORDER BY createdAt DESC")
+    fun getHistoryByPlatform(platform: String): Flow<List<DownloadHistory>>
+    
     @Query("SELECT * FROM download_history ORDER BY createdAt DESC LIMIT :limit")
     fun getRecentHistory(limit: Int): Flow<List<DownloadHistory>>
+    
+    @Query("SELECT * FROM download_history WHERE platform = :platform ORDER BY createdAt DESC LIMIT :limit")
+    fun getRecentHistoryByPlatform(platform: String, limit: Int): Flow<List<DownloadHistory>>
     
     @Query("SELECT * FROM download_history WHERE taskId = :taskId")
     suspend fun getByTaskId(taskId: String): DownloadHistory?

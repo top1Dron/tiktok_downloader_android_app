@@ -11,6 +11,7 @@ data class DownloadHistory(
     val url: String,
     val fileName: String?,
     val filePath: String?,
+    val platform: String, // "tiktok" or "instagram"
     val status: String, // "pending", "downloading", "completed", "failed"
     val createdAt: Long = System.currentTimeMillis(),
     val completedAt: Long? = null,
